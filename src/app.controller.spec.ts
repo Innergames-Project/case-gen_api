@@ -15,8 +15,13 @@ describe('AppController', () => {
   });
 
   describe('root', () => {
-    it('should return "Hello World!"', () => {
-      expect(appController.getHello()).toBe('Hello World!');
+    it('should describe the active providers', () => {
+      expect(appController.getHello()).toEqual({
+        name: 'case-gen_api',
+        auth: 'disabled',
+        database: 'in-memory',
+        ai: 'groq',
+      });
     });
   });
 });
