@@ -1,19 +1,28 @@
 import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
+import { APP_FILTER } from '@nestjs/core';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-import { DatabaseModule } from './database/database.module';
-import { ConfigModule } from '@nestjs/config';
-import { UserRepository } from './repositories/user.repository';
-import { UserService } from './services/user.service';
-import { AuthController } from './controllers/auth.controller';
-import { AuthService } from './services/auth.service';
+import { CasesModule } from './cases/cases.module';
+import { AiModule } from './ai/ai.module';
+import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 
 @Module({
   imports: [
+    // Global config so env vars are available in every module/service.
     ConfigModule.forRoot({ isGlobal: true }),
-    DatabaseModule
+    // Temporary case storage layer until a real database is added.
+    CasesModule,
+    // AI endpoints isolated behind a dedicated Groq service.
+    AiModule,
   ],
-  controllers: [AppController, AuthController],
-  providers: [AppService, UserRepository, UserService, AuthService],
+  controllers: [AppController],
+  providers: [
+    AppService,
+    {
+      provide: APP_FILTER,
+      useClass: HttpExceptionFilter,
+    },
+  ],
 })
-export class AppModule { }
+export class AppModule {}
