@@ -28,8 +28,8 @@ export class HttpExceptionFilter implements ExceptionFilter {
     const message =
       typeof exceptionResponse === 'string'
         ? exceptionResponse
-        : (exceptionResponse as { message?: string | string[] } | null)?.message ??
-          'Internal server error';
+        : ((exceptionResponse as { message?: string | string[] } | null)
+            ?.message ?? 'Internal server error');
 
     const normalizedMessage = Array.isArray(message)
       ? message.join(', ')

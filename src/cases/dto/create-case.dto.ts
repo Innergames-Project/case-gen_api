@@ -1,4 +1,9 @@
 export interface CreateCaseDto {
-  title: string;
-  description: string;
+  title?: unknown;
+  description?: unknown;
+}
+
+export interface UpdateCaseDto {
+  title?: unknown;
+  description?: unknown;
 }

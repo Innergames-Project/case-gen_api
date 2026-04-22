@@ -19,6 +19,20 @@ describe('AppController (e2e)', () => {
         text: `draft:${prompt}`,
       };
     }),
+    generateCardsFromDocument: jest.fn(async (documentText: string) => ({
+      model: 'test-model',
+      sourceTextLength: documentText.length,
+      cards: [
+        {
+          id: 'card-1',
+          type: 'clue',
+          title: 'Read the document',
+          front: 'What does the source document ask players to notice?',
+          back: 'The document describes a playable investigation clue.',
+          source: 'brief.txt',
+        },
+      ],
+    })),
   };
 
   beforeEach(async () => {
@@ -42,15 +56,12 @@ describe('AppController (e2e)', () => {
   });
 
   it('/ (GET)', () => {
-    return request(app.getHttpServer())
-      .get('/')
-      .expect(200)
-      .expect({
-        name: 'case-gen_api',
-        auth: 'disabled',
-        database: 'in-memory',
-        ai: 'groq',
-      });
+    return request(app.getHttpServer()).get('/').expect(200).expect({
+      name: 'case-gen_api',
+      auth: 'disabled',
+      database: 'in-memory',
+      ai: 'groq',
+    });
   });
 
   it('/cases (GET) returns an empty list initially', () => {
@@ -83,6 +94,74 @@ describe('AppController (e2e)', () => {
 
     expect(listResponse.body).toHaveLength(1);
     expect(listResponse.body[0]).toEqual(createResponse.body);
+  });
+
+  it('/cases/:id (GET) returns one case', async () => {
+    const createResponse = await request(app.getHttpServer())
+      .post('/cases')
+      .send({
+        title: 'Single case',
+        description: 'Fetched by id',
+      })
+      .expect(201);
+
+    return request(app.getHttpServer())
+      .get(`/cases/${createResponse.body.id}`)
+      .expect(200)
+      .expect(createResponse.body);
+  });
+
+  it('/cases/:id (PATCH) updates a case', async () => {
+    const createResponse = await request(app.getHttpServer())
+      .post('/cases')
+      .send({
+        title: 'Before update',
+        description: 'Original description',
+      })
+      .expect(201);
+
+    const updateResponse = await request(app.getHttpServer())
+      .patch(`/cases/${createResponse.body.id}`)
+      .send({ title: 'After update' })
+      .expect(200);
+
+    expect(updateResponse.body).toEqual({
+      ...createResponse.body,
+      title: 'After update',
+      updatedAt: expect.any(String),
+    });
+  });
+
+  it('/cases/:id (DELETE) removes a case', async () => {
+    const createResponse = await request(app.getHttpServer())
+      .post('/cases')
+      .send({
+        title: 'Delete me',
+        description: 'Temporary case',
+      })
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .delete(`/cases/${createResponse.body.id}`)
+      .expect(200)
+      .expect({
+        deleted: true,
+        id: createResponse.body.id,
+      });
+
+    return request(app.getHttpServer())
+      .get(`/cases/${createResponse.body.id}`)
+      .expect(404);
+  });
+
+  it('/cases (POST) validates required fields', () => {
+    return request(app.getHttpServer())
+      .post('/cases')
+      .send({ title: 'Missing description' })
+      .expect(400)
+      .expect((response) => {
+        expect(response.body.message).toBe('description is required');
+      });
   });
 
   it('/ai/health (GET) exposes provider readiness', () => {
@@ -120,5 +199,72 @@ describe('AppController (e2e)', () => {
           timestamp: expect.any(String),
         });
       });
+  });
+
+  it('/ai/generate-cards (POST) accepts a document and returns cards with PDF data', async () => {
+    const response = await request(app.getHttpServer())
+      .post('/ai/generate-cards')
+      .field('prompt', 'Turn this into clue cards')
+      .attach(
+        'document',
+        Buffer.from('Players need to inspect a suspicious login report.'),
+        {
+          filename: 'brief.txt',
+          contentType: 'text/plain',
+        },
+      )
+      .expect(201);
+
+    expect(response.body).toEqual({
+      model: 'test-model',
+      sourceTextLength: 50,
+      cards: [
+        {
+          id: 'card-1',
+          type: 'clue',
+          title: 'Read the document',
+          front: 'What does the source document ask players to notice?',
+          back: 'The document describes a playable investigation clue.',
+          source: 'brief.txt',
+        },
+      ],
+      pdf: {
+        filename: 'game-cards.pdf',
+        contentType: 'application/pdf',
+        base64: expect.any(String),
+      },
+    });
+    expect(
+      Buffer.from(response.body.pdf.base64, 'base64').toString('latin1'),
+    ).toContain('%PDF-1.4');
+    expect(groqServiceMock.generateCardsFromDocument).toHaveBeenCalledWith(
+      'Players need to inspect a suspicious login report.',
+      'Turn this into clue cards',
+    );
+  });
+
+  it('/ai/generate-cards/pdf (POST) returns a PDF file', async () => {
+    const response = await request(app.getHttpServer())
+      .post('/ai/generate-cards/pdf')
+      .attach('document', Buffer.from('Create a short game card deck.'), {
+        filename: 'brief.txt',
+        contentType: 'text/plain',
+      })
+      .expect(201);
+
+    expect(response.headers['content-type']).toContain('application/pdf');
+    expect(response.headers['content-disposition']).toBe(
+      'attachment; filename="game-cards.pdf"',
+    );
+    expect(response.body.toString('latin1')).toContain('%PDF-1.4');
+  });
+
+  it('/health (GET) mirrors backend status for load balancers', () => {
+    return request(app.getHttpServer()).get('/health').expect(200).expect({
+      name: 'case-gen_api',
+      auth: 'disabled',
+      database: 'in-memory',
+      ai: 'groq',
+    });
   });
 });
