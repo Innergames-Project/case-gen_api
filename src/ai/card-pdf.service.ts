@@ -37,6 +37,7 @@ export class CardPdfService {
     const lines = [
       { size: 18, text: deckTitle },
       { size: 10, text: `Card ${cardNumber} - ${this.toPdfText(card.type)}` },
+      { size: 10, text: `Key: ${this.toPdfText(card.key)}` },
       { size: 16, text: this.toPdfText(card.title) },
       { size: 12, text: 'Front' },
       ...this.wrap(this.toPdfText(card.front), 82).map((text) => ({
@@ -45,6 +46,19 @@ export class CardPdfService {
       })),
       { size: 12, text: 'Back' },
       ...this.wrap(this.toPdfText(card.back), 82).map((text) => ({
+        size: 11,
+        text,
+      })),
+      {
+        size: 12,
+        text: card.isEnding ? 'This card ends the game path' : 'Allowed next cards',
+      },
+      ...this.wrap(
+        card.isEnding
+          ? 'No next cards.'
+          : this.toPdfText(card.allowedNextCardKeys.join(', ')),
+        82,
+      ).map((text) => ({
         size: 11,
         text,
       })),

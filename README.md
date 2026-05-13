@@ -144,7 +144,7 @@ This module exposes AI endpoints and isolates the Groq integration:
 - `ai.controller.ts`
   Exposes `/ai/health`, `/ai/generate-case`, `/ai/generate-cards`, and `/ai/generate-cards/pdf`.
 - `groq.service.ts`
-  Validates input, checks configuration, performs the Groq request, and normalizes generated game cards.
+  Validates input, checks configuration, compresses long documents into gameplay-relevant summaries when needed, performs the Groq request, and normalizes generated game cards including their allowed next-card links.
 - `document-text.service.ts`
   Extracts readable text from uploaded documents before AI processing.
 - `card-pdf.service.ts`

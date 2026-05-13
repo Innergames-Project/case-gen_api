@@ -9,6 +9,8 @@ This document is for the frontend team. It explains how to run the backend local
 * Includes AI endpoints using Groq to generate a case draft from a prompt.
 * Can generate game cards from an uploaded document and return them as JSON with a base64 PDF.
 * Can return a PDF directly with the generated cards.
+* Generated cards include allowed next-card links so the frontend can enforce valid game paths.
+* Long documents are automatically condensed before card generation so large PDFs are less likely to exceed the AI model input limit.
 * No authentication yet. All endpoints are public to simplify frontend integration.
 * CORS is enabled so it can be called from the browser.
 
@@ -262,11 +264,15 @@ Simplified response:
   "cards": [
     {
       "id": "uuid",
+      "key": "card-1",
       "type": "challenge",
       "title": "Card title",
       "front": "Player-facing text",
       "back": "Answer or notes",
-      "source": "Source reference"
+      "source": "Source reference",
+      "allowedNextCardKeys": ["card-2", "card-4"],
+      "allowedNextCardIds": ["uuid-2", "uuid-4"],
+      "isEnding": false
     }
   ],
   "sourceTextLength": 1200,
@@ -277,6 +283,8 @@ Simplified response:
   }
 }
 ```
+
+Use `allowedNextCardIds` to decide which cards remain selectable after the player chooses a card. If `isEnding` is `true`, that branch should stop there.
 
 ### Generate only the cards PDF
 

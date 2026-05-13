@@ -1,10 +1,19 @@
+export interface GameCardOption {
+  nextCardId: string;
+  nextCardKey: string;
+}
+
 export interface GameCard {
   id: string;
+  key: string;
   type: string;
   title: string;
   front: string;
   back: string;
   source?: string;
+  allowedNextCardIds: string[];
+  allowedNextCardKeys: string[];
+  isEnding: boolean;
 }
 
 export interface GeneratedCardsResult {
