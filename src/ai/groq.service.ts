@@ -104,7 +104,7 @@ export class GroqService {
     ]);
 
     const content = response.choices[0]?.message?.content ?? '';
-    const cards = this.parseCards(content);
+    const cards = await this.parseCards(content);
 
     return {
       model: this.model,
@@ -247,14 +247,20 @@ export class GroqService {
     });
   }
 
-  private parseCards(content: string): GameCard[] {
-    const parsed = this.parseJson(content);
+  private async parseCards(content: string): Promise<GameCard[]> {
+    const parsed =
+      this.parseJson(content) ??
+      this.parseJson(await this.repairCardsPayload(content));
     const rawCards = Array.isArray(parsed)
       ? parsed
       : Array.isArray(parsed?.cards)
         ? parsed.cards
         : [];
 
+    return this.normalizeCards(rawCards);
+  }
+
+  private normalizeCards(rawCards: unknown[]): GameCard[] {
     const normalizedCards = rawCards
       .map((card: unknown, index: number) => this.toDraftGameCard(card, index))
       .filter((card): card is DraftGameCard => card !== null);
@@ -267,6 +273,33 @@ export class GroqService {
     }
 
     return cards;
+  }
+
+  private async repairCardsPayload(content: string): Promise<string> {
+    if (!content.trim()) {
+      return '';
+    }
+
+    const response = await this.createChatCompletion(
+      [
+        {
+          role: 'system',
+          content: [
+            'You repair malformed card-generation responses.',
+            'Return only valid JSON.',
+            'The JSON shape must be {"cards":[{"key":"card-1","type":"challenge|clue|event|decision","title":"short title","front":"player-facing text","back":"answer, resolution, or facilitator notes","source":"short source reference","allowedNext":["card-2"],"isEnding":false}]}.',
+            'If the source already contains card content, preserve it and only normalize the structure.',
+          ].join(' '),
+        },
+        {
+          role: 'user',
+          content: `Convert this response into valid card JSON:\n\n${content}`,
+        },
+      ],
+      0.1,
+    );
+
+    return response.choices[0]?.message?.content?.trim() ?? '';
   }
 
   private parseJson(content: string): any {

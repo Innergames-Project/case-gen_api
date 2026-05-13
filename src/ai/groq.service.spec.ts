@@ -260,7 +260,7 @@ describe('GroqService', () => {
 
     (service as any).client = { chat: { completions: { create } } };
 
-    const longText = `${'A'.repeat(4_500)} ${'B'.repeat(4_500)}`;
+    const longText = `${'A'.repeat(3_500)} ${'B'.repeat(3_500)}`;
     const result = await service.generateCardsFromDocument(
       longText,
       'Preserve game flow',
