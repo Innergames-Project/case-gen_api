@@ -267,4 +267,35 @@ describe('AppController (e2e)', () => {
       ai: 'groq',
     });
   });
+
+  it('protects private routes when API_ACCESS_TOKEN is configured', async () => {
+    process.env.API_ACCESS_TOKEN = 'secret-token';
+
+    const moduleFixture: TestingModule = await Test.createTestingModule({
+      imports: [AppModule],
+    })
+      .overrideProvider(GroqService)
+      .useValue(groqServiceMock)
+      .compile();
+
+    const protectedApp = moduleFixture.createNestApplication();
+    await protectedApp.init();
+
+    await request(protectedApp.getHttpServer()).get('/health').expect(200);
+
+    await request(protectedApp.getHttpServer()).get('/cases').expect(401);
+
+    await request(protectedApp.getHttpServer())
+      .get('/cases')
+      .set('x-api-key', 'secret-token')
+      .expect(200);
+
+    await request(protectedApp.getHttpServer())
+      .get('/cases')
+      .set('Authorization', 'Bearer secret-token')
+      .expect(200);
+
+    await protectedApp.close();
+    delete process.env.API_ACCESS_TOKEN;
+  });
 });

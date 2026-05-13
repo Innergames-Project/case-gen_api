@@ -1,0 +1,438 @@
+openapi: 3.1.0
+info:
+  title: case-gen_api
+  version: 0.0.1
+  description: API contract for the frontend team.
+servers:
+  - url: http://localhost:3000
+    description: Local development
+tags:
+  - name: Health
+  - name: Cases
+  - name: AI
+security:
+  - ApiKeyHeader: []
+  - BearerAuth: []
+paths:
+  /:
+    get:
+      tags: [Health]
+      summary: Backend status
+      responses:
+        '200':
+          description: Backend status payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+  /health:
+    get:
+      tags: [Health]
+      summary: Health alias
+      security: []
+      responses:
+        '200':
+          description: Backend status payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+  /cases:
+    get:
+      tags: [Cases]
+      summary: List cases
+      responses:
+        '200':
+          description: Cases list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CaseDocument'
+    post:
+      tags: [Cases]
+      summary: Create case
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCaseRequest'
+      responses:
+        '201':
+          description: Created case
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CaseDocument'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /cases/{id}:
+    get:
+      tags: [Cases]
+      summary: Get case by id
+      parameters:
+        - $ref: '#/components/parameters/CaseId'
+      responses:
+        '200':
+          description: Case
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CaseDocument'
+        '404':
+          description: Case not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    patch:
+      tags: [Cases]
+      summary: Update case
+      parameters:
+        - $ref: '#/components/parameters/CaseId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateCaseRequest'
+      responses:
+        '200':
+          description: Updated case
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CaseDocument'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Case not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      tags: [Cases]
+      summary: Delete case
+      parameters:
+        - $ref: '#/components/parameters/CaseId'
+      responses:
+        '200':
+          description: Delete result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeleteCaseResponse'
+        '404':
+          description: Case not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /ai/health:
+    get:
+      tags: [AI]
+      summary: AI provider health
+      responses:
+        '200':
+          description: AI provider status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AiHealthResponse'
+  /ai/generate-case:
+    post:
+      tags: [AI]
+      summary: Generate a draft case with AI
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenerateCaseRequest'
+      responses:
+        '201':
+          description: Generated case draft
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenerateCaseResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: AI not configured
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /ai/generate-cards:
+    post:
+      tags: [AI]
+      summary: Generate playable cards from an uploaded document
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [document]
+              properties:
+                document:
+                  type: string
+                  format: binary
+                  description: PDF, TXT, MD, CSV, or JSON
+                prompt:
+                  type: string
+                  description: Optional extra generation instruction
+      responses:
+        '201':
+          description: Generated cards with PDF payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenerateCardsResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: AI not configured
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /ai/generate-cards/pdf:
+    post:
+      tags: [AI]
+      summary: Generate only the cards PDF from an uploaded document
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [document]
+              properties:
+                document:
+                  type: string
+                  format: binary
+                prompt:
+                  type: string
+      responses:
+        '201':
+          description: Generated PDF file
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          description: AI not configured
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+components:
+  securitySchemes:
+    ApiKeyHeader:
+      type: apiKey
+      in: header
+      name: x-api-key
+    BearerAuth:
+      type: http
+      scheme: bearer
+  parameters:
+    CaseId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+  schemas:
+    HealthResponse:
+      type: object
+      required: [name, auth, database, ai]
+      properties:
+        name:
+          type: string
+          example: case-gen_api
+        auth:
+          type: string
+          example: api-key
+        database:
+          type: string
+          example: in-memory
+        ai:
+          type: string
+          example: groq
+    AiHealthResponse:
+      type: object
+      required: [provider, configured]
+      properties:
+        provider:
+          type: string
+          example: groq
+        configured:
+          type: boolean
+          example: true
+    CreateCaseRequest:
+      type: object
+      required: [title, description]
+      properties:
+        title:
+          type: string
+          example: Frontend case
+        description:
+          type: string
+          example: Case created from the frontend
+    UpdateCaseRequest:
+      type: object
+      minProperties: 1
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+    CaseDocument:
+      type: object
+      required: [id, title, description, cardIds, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          example: 5c579f4b-0fdf-43ff-a04d-180d85f1fe17
+        title:
+          type: string
+        description:
+          type: string
+        cardIds:
+          type: array
+          items:
+            type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    DeleteCaseResponse:
+      type: object
+      required: [deleted, id]
+      properties:
+        deleted:
+          type: boolean
+          example: true
+        id:
+          type: string
+    GenerateCaseRequest:
+      type: object
+      required: [prompt]
+      properties:
+        prompt:
+          type: string
+          example: Generate a signup troubleshooting case
+    GenerateCaseResponse:
+      type: object
+      required: [model, text]
+      properties:
+        model:
+          type: string
+          example: openai/gpt-oss-20b
+        text:
+          type: string
+    GameCard:
+      type: object
+      required:
+        [id, key, type, title, front, back, allowedNextCardIds, allowedNextCardKeys, isEnding]
+      properties:
+        id:
+          type: string
+        key:
+          type: string
+          example: card-1
+        type:
+          type: string
+          example: decision
+        title:
+          type: string
+        front:
+          type: string
+        back:
+          type: string
+        source:
+          type: string
+        allowedNextCardIds:
+          type: array
+          items:
+            type: string
+        allowedNextCardKeys:
+          type: array
+          items:
+            type: string
+        isEnding:
+          type: boolean
+    PdfPayload:
+      type: object
+      required: [filename, contentType, base64]
+      properties:
+        filename:
+          type: string
+          example: game-cards.pdf
+        contentType:
+          type: string
+          example: application/pdf
+        base64:
+          type: string
+    GenerateCardsResponse:
+      type: object
+      required: [model, cards, sourceTextLength, pdf]
+      properties:
+        model:
+          type: string
+          example: openai/gpt-oss-20b
+        cards:
+          type: array
+          items:
+            $ref: '#/components/schemas/GameCard'
+        sourceTextLength:
+          type: integer
+          example: 1200
+        pdf:
+          $ref: '#/components/schemas/PdfPayload'
+    ErrorResponse:
+      type: object
+      required: [statusCode, message, path, timestamp]
+      properties:
+        statusCode:
+          type: integer
+          example: 400
+        message:
+          type: string
+          example: title is required
+        path:
+          type: string
+          example: /cases
+        timestamp:
+          type: string
+          format: date-time

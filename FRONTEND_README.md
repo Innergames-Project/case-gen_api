@@ -11,7 +11,8 @@ This document is for the frontend team. It explains how to run the backend local
 * Can return a PDF directly with the generated cards.
 * Generated cards include allowed next-card links so the frontend can enforce valid game paths.
 * Long documents are automatically condensed before card generation so large PDFs are less likely to exceed the AI model input limit.
-* No authentication yet. All endpoints are public to simplify frontend integration.
+* If `API_ACCESS_TOKEN` is configured on the backend, all routes except `GET /health` require `x-api-key` or `Authorization: Bearer ...`.
+* If `API_ACCESS_TOKEN` is not set, the backend stays open for local development. If it is set, every route except `GET /health` requires that token.
 * CORS is enabled so it can be called from the browser.
 
 ## Requirements

@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: case-gen-api
+    runtime: node
+    plan: starter
+    autoDeploy: true
+    buildCommand: npm ci && npm run build
+    startCommand: npm run start:prod
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: 22
+      - key: PORT
+        value: 10000
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GROQ_MODEL
+        value: openai/gpt-oss-20b
+      - key: API_ACCESS_TOKEN
+        sync: false
+      - key: CORS_ORIGIN
+        sync: false

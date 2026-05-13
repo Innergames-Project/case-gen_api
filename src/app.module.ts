@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_FILTER } from '@nestjs/core';
 import { AppController } from './app.controller';
@@ -6,6 +6,7 @@ import { AppService } from './app.service';
 import { CasesModule } from './cases/cases.module';
 import { AiModule } from './ai/ai.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
+import { ApiAccessMiddleware } from './common/middleware/api-access.middleware';
 
 @Module({
   imports: [
@@ -25,4 +26,8 @@ import { HttpExceptionFilter } from './common/filters/http-exception.filter';
     },
   ],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer.apply(ApiAccessMiddleware).forRoutes('*');
+  }
+}

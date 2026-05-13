@@ -31,6 +31,13 @@
 $ npm install
 ```
 
+## Stable deploy
+
+For a stable public deployment that does not depend on your computer, use Render with:
+
+- [render.yaml](/Users/karanjeet/Desktop/case-gen_api/render.yaml:1)
+- [DEPLOY.md](/Users/karanjeet/Desktop/case-gen_api/DEPLOY.md:1)
+
 ## Compile and run the project
 
 ```bash
