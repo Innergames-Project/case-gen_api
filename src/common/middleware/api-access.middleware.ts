@@ -33,7 +33,13 @@ export class ApiAccessMiddleware implements NestMiddleware {
   }
 
   private isPublicRequest(request: Request): boolean {
-    return request.method === 'GET' && request.path === '/health';
+    const method = request.method.toUpperCase();
+    const path = request.path || request.url || '/';
+
+    return (
+      (method === 'GET' || method === 'HEAD') &&
+      (path === '/' || path === '/health')
+    );
   }
 
   private readHeaderValue(value: string | string[] | undefined): string {
