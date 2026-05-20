@@ -1,25 +1,61 @@
-export interface GameCardOption {
-  nextCardId: string;
-  nextCardKey: string;
+export type InterventionDomain =
+  | 'Socioeconomic security'
+  | 'Justice'
+  | 'Social cohesion'
+  | 'Solidarity'
+  | 'Social inclusion'
+  | 'Equality'
+  | 'Social empowerment'
+  | 'Human dignity';
+
+export const ALL_INTERVENTION_DOMAINS: InterventionDomain[] = [
+  'Socioeconomic security',
+  'Justice',
+  'Social cohesion',
+  'Solidarity',
+  'Social inclusion',
+  'Equality',
+  'Social empowerment',
+  'Human dignity',
+];
+
+export type InterventionFormality = 'formal' | 'informal';
+export type InterventionScope = 'individual' | 'collective';
+export type CaseDifficulty = 'easy' | 'medium' | 'hard';
+
+export interface InterventionTag {
+  domain: InterventionDomain;
+  formality: InterventionFormality;
+  scope: InterventionScope;
 }
 
-export interface GameCard {
-  id: string;
+export interface CaseChoice {
   key: string;
-  type: string;
-  title: string;
-  front: string;
-  back: string;
-  source?: string;
-  allowedNextCardIds: string[];
-  allowedNextCardKeys: string[];
+  text: string;
+  consequenceCardKey: string;
+}
+
+export interface StepCard {
+  step: number;
+  scenarioText: string;
+  choices: CaseChoice[];
+}
+
+export interface ConsequenceCard {
+  key: string;
+  step: number;
+  consequenceText: string;
+  interventions: InterventionTag[];
+  nextStep: number | null;
   isEnding: boolean;
+  isWin: boolean;
 }
 
 export interface GeneratedCardsResult {
   model: string;
-  cards: GameCard[];
-  sourceTextLength: number;
+  difficulty: CaseDifficulty;
+  stepCards: StepCard[];
+  consequenceCards: ConsequenceCard[];
 }
 
 export interface UploadedDocument {

@@ -1,7 +1,18 @@
 import { Injectable } from '@nestjs/common';
+import type { CaseDifficulty, ConsequenceCard, StepCard } from '../ai/types/game-card.type';
 import { CaseDocument } from './types/case-document.type';
 
-type CaseInput = Pick<CaseDocument, 'title' | 'description'>;
+type CaseInput = Pick<CaseDocument, 'title' | 'description'> & {
+  difficulty?: CaseDifficulty | null;
+  stepCards?: StepCard[];
+  consequenceCards?: ConsequenceCard[];
+};
+
+type CardUpdate = {
+  difficulty: CaseDifficulty;
+  stepCards: StepCard[];
+  consequenceCards: ConsequenceCard[];
+};
 
 @Injectable()
 export class CaseRepository {
@@ -14,7 +25,9 @@ export class CaseRepository {
       id: crypto.randomUUID(),
       title: input.title,
       description: input.description,
-      cardIds: [],
+      difficulty: input.difficulty ?? null,
+      stepCards: input.stepCards ?? [],
+      consequenceCards: input.consequenceCards ?? [],
       createdAt: now,
       updatedAt: now,
     };
@@ -28,7 +41,7 @@ export class CaseRepository {
   }
 
   async findById(id: string): Promise<CaseDocument | null> {
-    return this.cases.find((caseDocument) => caseDocument.id === id) ?? null;
+    return this.cases.find((c) => c.id === id) ?? null;
   }
 
   async update(
@@ -41,23 +54,30 @@ export class CaseRepository {
       return null;
     }
 
-    if (input.title !== undefined) {
-      caseDocument.title = input.title;
+    if (input.title !== undefined) caseDocument.title = input.title;
+    if (input.description !== undefined) caseDocument.description = input.description;
+
+    caseDocument.updatedAt = new Date().toISOString();
+    return { ...caseDocument };
+  }
+
+  async updateCards(id: string, cards: CardUpdate): Promise<CaseDocument | null> {
+    const caseDocument = await this.findById(id);
+
+    if (!caseDocument) {
+      return null;
     }
 
-    if (input.description !== undefined) {
-      caseDocument.description = input.description;
-    }
-
+    caseDocument.difficulty = cards.difficulty;
+    caseDocument.stepCards = cards.stepCards;
+    caseDocument.consequenceCards = cards.consequenceCards;
     caseDocument.updatedAt = new Date().toISOString();
 
     return { ...caseDocument };
   }
 
   async remove(id: string): Promise<boolean> {
-    const index = this.cases.findIndex(
-      (caseDocument) => caseDocument.id === id,
-    );
+    const index = this.cases.findIndex((c) => c.id === id);
 
     if (index === -1) {
       return false;

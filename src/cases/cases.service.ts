@@ -3,6 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import type { CaseDifficulty, ConsequenceCard, StepCard } from '../ai/types/game-card.type';
 import { CreateCaseDto, UpdateCaseDto } from './dto/create-case.dto';
 import { CaseRepository } from './case.repository';
 
@@ -14,8 +15,30 @@ export class CasesService {
     const title = this.readRequiredText(input.title, 'title');
     const description = this.readRequiredText(input.description, 'description');
 
-    // Business logic stays here, persistence details stay in the repository.
     return this.caseRepository.create({ title, description });
+  }
+
+  async createWithCards(input: {
+    title: string;
+    description: string;
+    difficulty: CaseDifficulty;
+    stepCards: StepCard[];
+    consequenceCards: ConsequenceCard[];
+  }) {
+    return this.caseRepository.create(input);
+  }
+
+  async regenerateCards(
+    id: string,
+    cards: { difficulty: CaseDifficulty; stepCards: StepCard[]; consequenceCards: ConsequenceCard[] },
+  ) {
+    const updated = await this.caseRepository.updateCards(id, cards);
+
+    if (!updated) {
+      throw new NotFoundException(`Case ${id} was not found`);
+    }
+
+    return updated;
   }
 
   async findAll() {
