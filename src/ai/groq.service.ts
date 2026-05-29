@@ -259,7 +259,7 @@ export class GroqService {
       }
 
       const record = item as Record<string, unknown>;
-      const step = typeof record.step === 'number' ? record.step : index + 1;
+      const step = this.readNumber(record.step) ?? index + 1;
       const scenarioText = this.requireString(
         record.scenarioText,
         `step ${step} scenarioText`,
@@ -308,7 +308,7 @@ export class GroqService {
 
       const record = item as Record<string, unknown>;
       const key = this.requireString(record.key, `consequence card ${index} key`);
-      const step = typeof record.step === 'number' ? record.step : 1;
+      const step = this.readNumber(record.step) ?? 1;
       const consequenceText = this.requireString(
         record.consequenceText,
         `${key} consequenceText`,
@@ -726,5 +726,15 @@ export class GroqService {
         'Groq is not configured. Set GROQ_API_KEY first.',
       );
     }
+  }
+
+  // Tolerantly read a number that may arrive as a number or a numeric string.
+  private readNumber(value: unknown): number | null {
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+    if (typeof value === 'string' && value.trim() !== '') {
+      const n = Number(value);
+      if (Number.isFinite(n)) return n;
+    }
+    return null;
   }
 }
