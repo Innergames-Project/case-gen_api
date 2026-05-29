@@ -319,11 +319,7 @@ export class GroqService {
       );
       const isEnding = Boolean(record.isEnding);
       const isWin = Boolean(record.isWin);
-      const nextStep = isEnding
-        ? null
-        : typeof record.nextStep === 'number'
-          ? record.nextStep
-          : null;
+      const nextStep = isEnding ? null : this.readNumber(record.nextStep);
 
       return {
         key,
