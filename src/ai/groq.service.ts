@@ -6,16 +6,24 @@ import {
 import { ConfigService } from '@nestjs/config';
 import Groq from 'groq-sdk';
 import type {
+  Aspect,
   CaseDifficulty,
+  Condition,
   ConsequenceCard,
   GeneratedCardsResult,
-  InterventionDomain,
   InterventionFormality,
   InterventionScope,
   InterventionTag,
+  SocialValue,
   StepCard,
 } from './types/game-card.type';
-import { ALL_INTERVENTION_DOMAINS } from './types/game-card.type';
+import {
+  ALL_ASPECT_KEYS,
+  ALL_CONDITIONS,
+  ALL_VALUES,
+  CONDITION_VALUE_MAP,
+  aspectKey,
+} from './types/game-card.type';
 
 const MAX_DIRECT_SOURCE_CHARS = 6_000;
 const SUMMARY_CHUNK_CHARS = 4_000;
@@ -38,64 +46,58 @@ The profile must cover:
 - Relevant history: past events that shaped the current situation
 - Neighbourhood or community context: where they live, what resources exist or are lacking
 
-If the input is sparse, invent realistic and consistent details that fit the social work context. Never contradict information provided by the user.
+If the input is sparse, invent realistic and consistent details that fit the social work context. Treat all generated people as explicitly fictional. Never contradict information provided by the user.
 
 You must respond with valid JSON only. No markdown, no code fences, no explanation — just the raw JSON object:
 {"title":"Short descriptive case title (max 8 words)","description":"Rich narrative description (400–700 words)"}`;
 
-const CARD_GENERATION_SYSTEM_PROMPT = `You generate card sets for the Sociality social work educational card game.
+const CARD_GENERATION_SYSTEM_PROMPT = `You generate card sets for the Sociality social work educational card game, which teaches the Social Quality (Sociale Kwaliteit) model.
 
 GAME OVERVIEW:
-Players work through a real social work case across 6 steps. They make choices at each step, collect intervention cards, and must reach the final step having collected all 8 intervention domains to win.
+Players work through a realistic social work case as a branching path of cards. Starting at card 1, they read the situation, discuss, and choose between intervention options (1A, 1B, ...). Each choice leads to one consequence card explaining the theory behind it and what happens in practice, then presents the next set of choices. This branching repeats until the path reaches an ending.
+
+THE MODEL — FOUR CONDITIONS, EACH WITH A VALUE:
+The Social Quality model has FOUR conditions that must be in order for people to be able to participate in society. Behind each condition sits a VALUE that forms the social worker's moral compass:
+1. Socio-economic security — value: Social justice (the experience of "meedoen", taking part)
+2. Social inclusion — value: Equality (gelijkwaardigheid; the experience of "mattering")
+3. Social cohesion — value: Solidarity (the feeling of belonging)
+4. Social empowerment — value: Human dignity (the room to be yourself)
+
+THE 8 ASPECTS (these are the 8 squares on the board that must all be filled to win the theoretical goal):
+The 4 conditions AND their 4 values together make 8 aspects:
+- Conditions: Socio-economic security, Social inclusion, Social cohesion, Social empowerment
+- Values: Social justice, Equality, Solidarity, Human dignity
+
+THE TWO DIMENSIONS (every intervention sits on both axes):
+- Dimension 1 — SCOPE: "individual" (micro: the person and their network) vs "collective" (meso/macro: groups, communities, organisations, policy)
+- Dimension 2 — FORMALITY: "formal" (working via established methods, rules, procedures, protocols, professional codes) vs "informal" (flexible, free, close-by; outside the beaten paths)
 
 CARD STRUCTURE:
-- 6 step cards (step 1 through 6), each presenting the case situation at that point
-- Each step card has 2–5 labelled choices (A, B, C, D, E)
-- Each choice leads to exactly one consequence card (e.g. "1A", "3C")
-- Each consequence card assigns exactly 3 intervention tags and points to the next step (or ends the game)
+- Step cards present the case situation at each point along the path.
+- Each step card has 2–3 labelled choices (A, B, C).
+- Each choice leads to exactly one consequence card (e.g. "1A", "3C").
+- Each consequence card lays down exactly 3 "kaartjes": one ASPECT, plus a SCOPE and a FORMALITY.
+- A consequence card either points to the next step OR is an ending.
 
-THE 8 INTERVENTION DOMAINS (these are the domains players collect):
-1. Socioeconomic security
-2. Justice
-3. Social cohesion
-4. Solidarity
-5. Social inclusion
-6. Equality
-7. Social empowerment
-8. Human dignity
-
-Each intervention tag has exactly 3 properties:
-- domain: one of the 8 above
-- formality: "formal" or "informal"
-- scope: "individual" or "collective"
-
-THE SIX-STEP SOCIAL WORK MODEL (structure each step around this):
-1. Situation Analysis — understanding the case
-2. Problem Definition — naming the core issue
-3. Goal Setting — agreeing on what to work toward
-4. Intervention Planning — choosing an approach
-5. Implementation — carrying out the intervention
-6. Evaluation & Reflection — assessing what happened
-
-WINNING CONDITIONS:
-- Players win by reaching step 6 AND having collected all 8 domains across their chosen path
-- There is one "perfect path": a sequence of choices that covers all 8 domains
-- Other paths lead to "learning endings" (dead paths) — they are not wrong, just incomplete
-- Some cases may have multiple win endings at step 6 (6A, 6B, etc.) if multiple paths converge on a win
-
-DIFFICULTY:
-- easy: correct choices are intuitive, obvious from common sense
-- medium: requires basic knowledge of Social Quality theory to identify optimal choices
-- hard: requires deep understanding of all 8 domains and their interplay
+WINNING — TWO CONDITIONS MUST BOTH BE MET:
+- PRACTICAL: the path must successfully play out the case to a completing ending (the pawn reaches the finish line).
+- THEORETICAL: across the chosen path, all 8 aspects must have been collected (all 8 board squares filled).
+- A consequence card with isWin:true marks a completing ending whose path satisfies BOTH.
+- MULTIPLE win endings are allowed and encouraged — there are several ways to win. Do not force a single winning path.
+- Paths that reach an ending without covering all 8 aspects are "learning endings": isEnding:true, isWin:false. They are not wrong, just incomplete.
 
 DESIGN RULES:
-- The perfect path must collect all 8 domains exactly once with no duplicates
-- Non-perfect paths may repeat domains or miss some, causing a learning ending
-- Every consequenceCardKey in a step card's choices must match a key in consequenceCards
-- nextStep must be null when isEnding is true
-- Exactly one consequence card must have isWin: true (the final win card)
-- Learning ending cards have isEnding: true, isWin: false
-- All non-ending consequence cards must have a valid nextStep (2–6)
+- At least one full path from card 1 to a win ending must collect all 8 aspects (each of the 8 at least once).
+- A winning path should aim to cover the 8 aspects without wasteful gaps; learning paths may miss or repeat aspects.
+- Every consequenceCardKey in a step card's choices must match a key in consequenceCards.
+- nextStep must be null when isEnding is true, and a valid later step number otherwise.
+- At least one consequence card must have isWin:true; there may be more than one.
+- Win cards must have isEnding:true.
+
+DIFFICULTY:
+- easy: the path that covers all 8 aspects is intuitive from common sense.
+- medium: identifying the covering path requires basic knowledge of Social Quality theory.
+- hard: requires deep understanding of all 8 aspects, the two dimensions, and their interplay.
 
 You must respond with valid JSON only. No markdown, no code fences, no explanation — just the raw JSON object matching this exact schema:
 {
@@ -103,13 +105,9 @@ You must respond with valid JSON only. No markdown, no code fences, no explanati
   "stepCards": [
     {
       "step": 1,
-      "scenarioText": "Narrative description of the situation at this point in the case (2–4 sentences)",
+      "scenarioText": "Narrative description of the situation at this point (2–4 sentences)",
       "choices": [
-        {
-          "key": "A",
-          "text": "Short description of this intervention choice (1–2 sentences)",
-          "consequenceCardKey": "1A"
-        }
+        { "key": "A", "text": "Short description of this intervention choice (1–2 sentences)", "consequenceCardKey": "1A" }
       ]
     }
   ],
@@ -117,11 +115,11 @@ You must respond with valid JSON only. No markdown, no code fences, no explanati
     {
       "key": "1A",
       "step": 1,
-      "consequenceText": "Explanation of what this choice means theoretically and what happens in practice as a result (2–3 sentences)",
+      "consequenceText": "What this choice means theoretically and what happens in practice (2–3 sentences)",
       "interventions": [
-        { "domain": "Social cohesion", "formality": "informal", "scope": "collective" },
-        { "domain": "Solidarity", "formality": "formal", "scope": "individual" },
-        { "domain": "Equality", "formality": "informal", "scope": "collective" }
+        { "aspect": { "kind": "condition", "condition": "Social cohesion", "label": "Social cohesion" }, "scope": "collective", "formality": "informal" },
+        { "aspect": { "kind": "value", "condition": "Social cohesion", "label": "Solidarity" }, "scope": "individual", "formality": "formal" },
+        { "aspect": { "kind": "value", "condition": "Social inclusion", "label": "Equality" }, "scope": "collective", "formality": "informal" }
       ],
       "nextStep": 2,
       "isEnding": false,
@@ -171,7 +169,10 @@ export class GroqService {
     }
 
     if (!isValidShape(parsed)) {
-      console.error('[GroqService] generateCaseDescription raw response:', content);
+      console.error(
+        '[GroqService] generateCaseDescription raw response:',
+        content,
+      );
       throw new BadRequestException(
         'AI returned an unexpected format for the case description',
       );
@@ -208,11 +209,15 @@ export class GroqService {
     return this.parseCardsResult(content);
   }
 
-  private async parseCardsResult(content: string): Promise<GeneratedCardsResult> {
+  private async parseCardsResult(
+    content: string,
+  ): Promise<GeneratedCardsResult> {
     let parsed = this.parseJson(content);
 
-    // Attempt repair if: JSON is invalid OR valid but missing the expected keys.
-    const needsRepair = !parsed || !Array.isArray(parsed.stepCards) || parsed.stepCards.length === 0;
+    const needsRepair =
+      !parsed ||
+      !Array.isArray(parsed.stepCards) ||
+      parsed.stepCards.length === 0;
     if (needsRepair) {
       parsed = this.parseJson(await this.repairCardsPayload(content)) ?? parsed;
     }
@@ -223,15 +228,21 @@ export class GroqService {
 
     const difficulty = this.readDifficulty(parsed.difficulty);
     const stepCards = this.normalizeStepCards(parsed.stepCards);
-    const consequenceCards = this.normalizeConsequenceCards(parsed.consequenceCards);
+    const consequenceCards = this.normalizeConsequenceCards(
+      parsed.consequenceCards,
+    );
 
     this.validateCardLinks(stepCards, consequenceCards);
+    this.validateWinConditions(stepCards, consequenceCards);
 
     return { model: this.model, difficulty, stepCards, consequenceCards };
   }
 
   private readDifficulty(value: unknown): CaseDifficulty {
-    if (typeof value === 'string' && CASE_DIFFICULTIES.includes(value as CaseDifficulty)) {
+    if (
+      typeof value === 'string' &&
+      CASE_DIFFICULTIES.includes(value as CaseDifficulty)
+    ) {
       return value as CaseDifficulty;
     }
     return 'medium';
@@ -249,7 +260,10 @@ export class GroqService {
 
       const record = item as Record<string, unknown>;
       const step = typeof record.step === 'number' ? record.step : index + 1;
-      const scenarioText = this.requireString(record.scenarioText, `step ${step} scenarioText`);
+      const scenarioText = this.requireString(
+        record.scenarioText,
+        `step ${step} scenarioText`,
+      );
       const choices = this.normalizeChoices(record.choices, step);
 
       return { step, scenarioText, choices };
@@ -263,14 +277,19 @@ export class GroqService {
 
     return raw.map((item: unknown, index: number) => {
       if (!item || typeof item !== 'object') {
-        throw new BadRequestException(`Choice ${index} in step ${step} is invalid`);
+        throw new BadRequestException(
+          `Choice ${index} in step ${step} is invalid`,
+        );
       }
 
       const record = item as Record<string, unknown>;
       return {
         key: this.requireString(record.key, `step ${step} choice key`),
         text: this.requireString(record.text, `step ${step} choice text`),
-        consequenceCardKey: this.requireString(record.consequenceCardKey, `step ${step} consequenceCardKey`),
+        consequenceCardKey: this.requireString(
+          record.consequenceCardKey,
+          `step ${step} consequenceCardKey`,
+        ),
       };
     });
   }
@@ -282,23 +301,46 @@ export class GroqService {
 
     return raw.map((item: unknown, index: number) => {
       if (!item || typeof item !== 'object') {
-        throw new BadRequestException(`Consequence card at index ${index} is invalid`);
+        throw new BadRequestException(
+          `Consequence card at index ${index} is invalid`,
+        );
       }
 
       const record = item as Record<string, unknown>;
       const key = this.requireString(record.key, `consequence card ${index} key`);
       const step = typeof record.step === 'number' ? record.step : 1;
-      const consequenceText = this.requireString(record.consequenceText, `${key} consequenceText`);
-      const interventions = this.normalizeInterventions(record.interventions, key);
+      const consequenceText = this.requireString(
+        record.consequenceText,
+        `${key} consequenceText`,
+      );
+      const interventions = this.normalizeInterventions(
+        record.interventions,
+        key,
+      );
       const isEnding = Boolean(record.isEnding);
       const isWin = Boolean(record.isWin);
-      const nextStep = isEnding ? null : (typeof record.nextStep === 'number' ? record.nextStep : null);
+      const nextStep = isEnding
+        ? null
+        : typeof record.nextStep === 'number'
+          ? record.nextStep
+          : null;
 
-      return { key, step, consequenceText, interventions, nextStep, isEnding, isWin };
+      return {
+        key,
+        step,
+        consequenceText,
+        interventions,
+        nextStep,
+        isEnding,
+        isWin,
+      };
     });
   }
 
-  private normalizeInterventions(raw: unknown, cardKey: string): InterventionTag[] {
+  private normalizeInterventions(
+    raw: unknown,
+    cardKey: string,
+  ): InterventionTag[] {
     if (!Array.isArray(raw)) {
       return [];
     }
@@ -307,21 +349,50 @@ export class GroqService {
       .map((item: unknown) => {
         if (!item || typeof item !== 'object') return null;
         const record = item as Record<string, unknown>;
-        const domain = this.readDomain(record.domain);
-        const formality = this.readFormality(record.formality);
+        const aspect = this.readAspect(record.aspect);
+        if (!aspect) return null;
         const scope = this.readScope(record.scope);
-        if (!domain) return null;
-        return { domain, formality, scope } satisfies InterventionTag;
+        const formality = this.readFormality(record.formality);
+        return { aspect, scope, formality } satisfies InterventionTag;
       })
       .filter((tag): tag is InterventionTag => tag !== null)
       .slice(0, 3);
   }
 
-  private readDomain(value: unknown): InterventionDomain | null {
-    if (typeof value === 'string' && ALL_INTERVENTION_DOMAINS.includes(value as InterventionDomain)) {
-      return value as InterventionDomain;
+  // Reads and validates an aspect, enforcing the condition<->value mapping.
+  private readAspect(value: unknown): Aspect | null {
+    if (!value || typeof value !== 'object') return null;
+    const record = value as Record<string, unknown>;
+
+    const kind = record.kind;
+    const condition = record.condition;
+    const label = record.label;
+
+    if (kind !== 'condition' && kind !== 'value') return null;
+    if (
+      typeof condition !== 'string' ||
+      !ALL_CONDITIONS.includes(condition as Condition)
+    ) {
+      return null;
     }
-    return null;
+    const cond = condition as Condition;
+
+    if (kind === 'condition') {
+      // For a condition aspect, the label must equal the condition.
+      if (label !== cond) return null;
+      return { kind: 'condition', condition: cond, label: cond };
+    }
+
+    // kind === 'value': label must be the value mapped to this condition.
+    const expectedValue: SocialValue = CONDITION_VALUE_MAP[cond];
+    if (
+      typeof label !== 'string' ||
+      !ALL_VALUES.includes(label as SocialValue) ||
+      label !== expectedValue
+    ) {
+      return null;
+    }
+    return { kind: 'value', condition: cond, label: expectedValue };
   }
 
   private readFormality(value: unknown): InterventionFormality {
@@ -329,10 +400,15 @@ export class GroqService {
   }
 
   private readScope(value: unknown): InterventionScope {
-    return value === 'individual' || value === 'collective' ? value : 'individual';
+    return value === 'individual' || value === 'collective'
+      ? value
+      : 'individual';
   }
 
-  private validateCardLinks(stepCards: StepCard[], consequenceCards: ConsequenceCard[]): void {
+  private validateCardLinks(
+    stepCards: StepCard[],
+    consequenceCards: ConsequenceCard[],
+  ): void {
     const consequenceKeys = new Set(consequenceCards.map((c) => c.key));
 
     for (const step of stepCards) {
@@ -344,6 +420,105 @@ export class GroqService {
         }
       }
     }
+
+    // Non-ending cards must point at a step that exists.
+    const stepNumbers = new Set(stepCards.map((s) => s.step));
+    for (const card of consequenceCards) {
+      if (!card.isEnding) {
+        if (card.nextStep === null || !stepNumbers.has(card.nextStep)) {
+          throw new BadRequestException(
+            `Consequence card "${card.key}" is not an ending but has an invalid nextStep`,
+          );
+        }
+      }
+    }
+  }
+
+  // Enforces the booklet's dual win condition and 8-aspect coverage.
+  private validateWinConditions(
+    stepCards: StepCard[],
+    consequenceCards: ConsequenceCard[],
+  ): void {
+    const winCards = consequenceCards.filter((c) => c.isWin);
+
+    if (winCards.length === 0) {
+      throw new BadRequestException(
+        'No winning ending found: at least one consequence card must have isWin:true',
+      );
+    }
+
+    for (const win of winCards) {
+      if (!win.isEnding) {
+        throw new BadRequestException(
+          `Win card "${win.key}" must also be an ending (isEnding:true)`,
+        );
+      }
+    }
+
+    // Theoretical goal: at least one path from card 1 to a win card must
+    // collect all 8 aspects. We walk every path through the branching tree.
+    const stepByNumber = new Map(stepCards.map((s) => [s.step, s]));
+    const cardByKey = new Map(consequenceCards.map((c) => [c.key, c]));
+
+    const startStep = stepCards.reduce(
+      (min, s) => (s.step < min ? s.step : min),
+      stepCards[0].step,
+    );
+
+    if (!this.someWinningPathCoversAllAspects(startStep, stepByNumber, cardByKey)) {
+      throw new BadRequestException(
+        'No winning path collects all 8 aspects: the theoretical goal is unreachable',
+      );
+    }
+  }
+
+  // Depth-first search over the card tree. Returns true if some path reaches a
+  // win ending while having covered all 8 aspect keys. Guards against cycles.
+  private someWinningPathCoversAllAspects(
+    step: number,
+    stepByNumber: Map<number, StepCard>,
+    cardByKey: Map<string, ConsequenceCard>,
+  ): boolean {
+    const target = new Set(ALL_ASPECT_KEYS);
+
+    const walk = (
+      currentStep: number,
+      covered: Set<string>,
+      visitedSteps: Set<number>,
+    ): boolean => {
+      if (visitedSteps.has(currentStep)) return false; // cycle guard
+      const stepCard = stepByNumber.get(currentStep);
+      if (!stepCard) return false;
+
+      const nextVisited = new Set(visitedSteps).add(currentStep);
+
+      for (const choice of stepCard.choices) {
+        const card = cardByKey.get(choice.consequenceCardKey);
+        if (!card) continue;
+
+        const nextCovered = new Set(covered);
+        for (const tag of card.interventions) {
+          nextCovered.add(aspectKey(tag.aspect));
+        }
+
+        if (card.isEnding) {
+          if (
+            card.isWin &&
+            [...target].every((k) => nextCovered.has(k))
+          ) {
+            return true;
+          }
+          continue; // learning ending, or win that didn't cover all 8
+        }
+
+        if (card.nextStep !== null) {
+          if (walk(card.nextStep, nextCovered, nextVisited)) return true;
+        }
+      }
+      return false;
+    };
+
+    return walk(step, new Set<string>(), new Set<number>());
   }
 
   private requireString(value: unknown, field: string): string {
@@ -353,19 +528,19 @@ export class GroqService {
     throw new BadRequestException(`AI returned invalid or missing "${field}"`);
   }
 
-  private async repairCaseDescriptionPayload(content: string): Promise<string> {
+  private async repairCaseDescriptionPayload(
+    content: string,
+  ): Promise<string> {
     if (!content.trim()) return '';
 
     const response = await this.createChatCompletion(
       [
         {
           role: 'system',
-          content: 'Extract or reformat the following content into this exact JSON: {"title":"short case title","description":"full narrative description"}. Return only valid JSON, no markdown, no extra text.',
+          content:
+            'Extract or reformat the following content into this exact JSON: {"title":"short case title","description":"full narrative description"}. Return only valid JSON, no markdown, no extra text.',
         },
-        {
-          role: 'user',
-          content,
-        },
+        { role: 'user', content },
       ],
       0.1,
     );
@@ -378,7 +553,7 @@ export class GroqService {
       return '';
     }
 
-    const schema = `{"difficulty":"easy|medium|hard","stepCards":[{"step":1,"scenarioText":"...","choices":[{"key":"A","text":"...","consequenceCardKey":"1A"}]}],"consequenceCards":[{"key":"1A","step":1,"consequenceText":"...","interventions":[{"domain":"Social cohesion","formality":"formal","scope":"individual"}],"nextStep":2,"isEnding":false,"isWin":false}]}`;
+    const schema = `{"difficulty":"easy|medium|hard","stepCards":[{"step":1,"scenarioText":"...","choices":[{"key":"A","text":"...","consequenceCardKey":"1A"}]}],"consequenceCards":[{"key":"1A","step":1,"consequenceText":"...","interventions":[{"aspect":{"kind":"condition","condition":"Social cohesion","label":"Social cohesion"},"scope":"individual","formality":"formal"}],"nextStep":2,"isEnding":false,"isWin":false}]}`;
 
     const response = await this.createChatCompletion(
       [
@@ -388,8 +563,10 @@ export class GroqService {
             'You convert card game content into a specific JSON schema.',
             'Return only valid JSON. No markdown, no explanation.',
             `Required schema: ${schema}`,
-            'The 8 valid domains are: Socioeconomic security, Justice, Social cohesion, Solidarity, Social inclusion, Equality, Social empowerment, Human dignity.',
-            'formality must be "formal" or "informal". scope must be "individual" or "collective".',
+            'The 4 conditions are: Socio-economic security, Social inclusion, Social cohesion, Social empowerment.',
+            'Each condition has one value behind it: Socio-economic security->Social justice, Social inclusion->Equality, Social cohesion->Solidarity, Social empowerment->Human dignity.',
+            'An aspect is either kind:"condition" (label equals the condition) or kind:"value" (label is that condition\'s value).',
+            'scope must be "individual" or "collective". formality must be "formal" or "informal".',
             'Preserve all narrative content from the source, only restructure the format.',
           ].join(' '),
         },
@@ -532,11 +709,9 @@ export class GroqService {
       return JSON.parse(content);
     } catch {
       const jsonMatch = content.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
-
       if (!jsonMatch) {
         return null;
       }
-
       try {
         return JSON.parse(jsonMatch[0]);
       } catch {
