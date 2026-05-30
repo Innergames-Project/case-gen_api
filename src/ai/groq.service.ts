@@ -73,31 +73,32 @@ THE TWO DIMENSIONS (every intervention sits on both axes):
 - Dimension 2 — FORMALITY: "formal" (working via established methods, rules, procedures, protocols, professional codes) vs "informal" (flexible, free, close-by; outside the beaten paths)
 
 CARD STRUCTURE:
+- Generate EXACTLY 6 steps (steps 1 through 6, no more, no fewer).
 - Step cards present the case situation at each point along the path.
 - Each step card has 2–3 labelled choices (A, B, C).
 - Each choice leads to exactly one consequence card (e.g. "1A", "3C").
 - Each consequence card lays down exactly 3 "kaartjes": one ASPECT, plus a SCOPE and a FORMALITY.
-- A consequence card either points to the next step OR is an ending.
+- A consequence card either points to the next step (must be a valid later step, 1–6) OR is an ending (nextStep: null).
 
 WINNING — TWO CONDITIONS MUST BOTH BE MET:
 - PRACTICAL: the path must successfully play out the case to a completing ending (the pawn reaches the finish line).
 - THEORETICAL: across the chosen path, all 8 aspects must have been collected (all 8 board squares filled).
 - A consequence card with isWin:true marks a completing ending whose path satisfies BOTH.
-- MULTIPLE win endings are allowed and encouraged — there are several ways to win. Do not force a single winning path.
-- Paths that reach an ending without covering all 8 aspects are "learning endings": isEnding:true, isWin:false. They are not wrong, just incomplete.
+
+DIFFICULTY DETERMINES PLAYER EXPERIENCE (affects number of happy paths and mistakes allowed):
+- easy: 3–4 winning paths from card 1 to win endings; most choices lead toward a win (few dead ends/learning endings).
+- medium: 1–2 winning paths; roughly balanced between smart choices and dead ends.
+- hard: 1 winning path; many choices lead to dead ends or learning endings (incomplete paths with isWin:false).
 
 DESIGN RULES:
+- Exactly 6 steps, no more, no fewer. Every step from 1 to 6 must exist.
 - At least one full path from card 1 to a win ending must collect all 8 aspects (each of the 8 at least once).
 - A winning path should aim to cover the 8 aspects without wasteful gaps; learning paths may miss or repeat aspects.
-- Every consequenceCardKey in a step card's choices must match a key in consequenceCards.
-- nextStep must be null when isEnding is true, and a valid later step number otherwise.
+- **CRITICAL:** Every choice in every step MUST have a matching consequence card. If step 1 has choices A, B, C, then consequenceCards must include 1A, 1B, 1C. No exceptions.
+- **CRITICAL:** Every consequence card that points to a next step (isEnding:false) must point to a step number that exists (1–6). nextStep must be null when isEnding is true.
 - At least one consequence card must have isWin:true; there may be more than one.
 - Win cards must have isEnding:true.
-
-DIFFICULTY:
-- easy: the path that covers all 8 aspects is intuitive from common sense.
-- medium: identifying the covering path requires basic knowledge of Social Quality theory.
-- hard: requires deep understanding of all 8 aspects, the two dimensions, and their interplay.
+- Double-check your output: count all step cards' choices, then verify every referenced consequenceCardKey exists in the list.
 
 You must respond with valid JSON only. No markdown, no code fences, no explanation — just the raw JSON object matching this exact schema:
 {
