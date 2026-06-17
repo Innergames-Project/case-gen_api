@@ -282,13 +282,13 @@ Example:
 ```env
 PORT=3000
 GROQ_API_KEY=your-groq-api-key
-GROQ_MODEL=llama-3.1-8b-instant
+GROQ_MODEL=openai/gpt-oss-20b
 ```
 
 Notes:
 
 - `GROQ_API_KEY` is required for the real AI call.
-- `GROQ_MODEL` is optional. Default: `llama-3.1-8b-instant`
+- `GROQ_MODEL` is optional. Default: `openai/gpt-oss-20b`
 - `.env` is ignored by git.
 
 ## Install and run
@@ -497,7 +497,7 @@ curl -X POST http://localhost:3000/ai/generate-cards \
 
 Success response:
 
-```json
+```json 
 {
   "model": "openai/gpt-oss-20b",
   "sourceTextLength": 1200,
