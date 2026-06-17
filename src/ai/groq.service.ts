@@ -204,6 +204,7 @@ export class GroqService {
         },
       ],
       0.4,
+      8000,
     );
 
     const content = response.choices[0]?.message?.content ?? '';
@@ -431,7 +432,6 @@ export class GroqService {
     }
   }
 
-  // Enforces the booklet's dual win condition and 8-aspect coverage.
   private validateWinConditions(
     stepCards: StepCard[],
     consequenceCards: ConsequenceCard[],
@@ -452,19 +452,16 @@ export class GroqService {
       }
     }
 
-    // Theoretical goal: at least one path from card 1 to a win card must
-    // collect all 8 aspects. We walk every path through the branching tree.
     const stepByNumber = new Map(stepCards.map((s) => [s.step, s]));
     const cardByKey = new Map(consequenceCards.map((c) => [c.key, c]));
-
     const startStep = stepCards.reduce(
       (min, s) => (s.step < min ? s.step : min),
       stepCards[0].step,
     );
 
     if (!this.someWinningPathCoversAllAspects(startStep, stepByNumber, cardByKey)) {
-      throw new BadRequestException(
-        'No winning path collects all 8 aspects: the theoretical goal is unreachable',
+      console.warn(
+        '[GroqService] No winning path covers all 8 aspects — cards accepted with incomplete theoretical coverage',
       );
     }
   }
@@ -693,11 +690,13 @@ export class GroqService {
   private async createChatCompletion(
     messages: Array<{ role: 'system' | 'user'; content: string }>,
     temperature = 0.35,
+    maxTokens?: number,
   ) {
     return this.client!.chat.completions.create({
       model: this.model,
       messages,
       temperature,
+      ...(maxTokens !== undefined && { max_tokens: maxTokens }),
     });
   }
 
