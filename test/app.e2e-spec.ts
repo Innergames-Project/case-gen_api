@@ -9,6 +9,7 @@ describe('AppController (e2e)', () => {
   let app: INestApplication<App>;
   const groqServiceMock = {
     isConfigured: jest.fn(() => true),
+    getModel: jest.fn(() => 'llama-3.1-8b-instant'),
     generateCaseDraft: jest.fn(async (prompt: string) => {
       if (!prompt?.trim()) {
         throw new BadRequestException('Prompt is required');
@@ -168,6 +169,7 @@ describe('AppController (e2e)', () => {
     return request(app.getHttpServer()).get('/ai/health').expect(200).expect({
       provider: 'groq',
       configured: true,
+      model: 'llama-3.1-8b-instant',
     });
   });
 

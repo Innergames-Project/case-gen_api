@@ -1,6 +1,10 @@
 import {
   BadRequestException,
+  GatewayTimeoutException,
+  HttpException,
+  HttpStatus,
   Injectable,
+  Logger,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -28,6 +32,8 @@ import {
 const MAX_DIRECT_SOURCE_CHARS = 6_000;
 const SUMMARY_CHUNK_CHARS = 4_000;
 const MAX_SUMMARY_PASSES = 3;
+const GROQ_RETRYABLE_STATUSES = new Set([408, 409, 429, 500, 502, 503, 504]);
+const GROQ_MAX_ATTEMPTS = 2;
 
 const CASE_DIFFICULTIES: CaseDifficulty[] = ['easy', 'medium', 'hard'];
 
@@ -131,18 +137,23 @@ You must respond with valid JSON only. No markdown, no code fences, no explanati
 
 @Injectable()
 export class GroqService {
+  private readonly logger = new Logger(GroqService.name);
   private readonly model: string;
   private readonly client: Groq | null;
 
   constructor(private readonly configService: ConfigService) {
     const apiKey = this.configService.get<string>('GROQ_API_KEY');
     this.model =
-      this.configService.get<string>('GROQ_MODEL') ?? 'openai/gpt-oss-20b';
+      this.configService.get<string>('GROQ_MODEL') ?? 'llama-3.1-8b-instant';
     this.client = apiKey ? new Groq({ apiKey }) : null;
   }
 
   isConfigured(): boolean {
     return this.client !== null;
+  }
+
+  getModel(): string {
+    return this.model;
   }
 
   async generateCaseDescription(
@@ -692,12 +703,104 @@ export class GroqService {
     temperature = 0.35,
     maxTokens?: number,
   ) {
-    return this.client!.chat.completions.create({
-      model: this.model,
-      messages,
-      temperature,
-      ...(maxTokens !== undefined && { max_tokens: maxTokens }),
-    });
+    let lastError: unknown;
+
+    for (let attempt = 1; attempt <= GROQ_MAX_ATTEMPTS; attempt += 1) {
+      try {
+        return await this.client!.chat.completions.create({
+          model: this.model,
+          messages,
+          temperature,
+          ...(maxTokens !== undefined && { max_tokens: maxTokens }),
+        });
+      } catch (error: unknown) {
+        lastError = error;
+        const status = this.readGroqStatus(error);
+
+        if (
+          attempt < GROQ_MAX_ATTEMPTS &&
+          GROQ_RETRYABLE_STATUSES.has(status)
+        ) {
+          this.logger.warn(
+            `Groq request failed on attempt ${attempt}/${GROQ_MAX_ATTEMPTS} with status ${status}. Retrying once.`,
+          );
+          await this.delay(400 * attempt);
+          continue;
+        }
+      }
+    }
+
+    throw this.toGroqHttpException(lastError);
+  }
+
+  private toGroqHttpException(error: unknown): HttpException {
+    const status = this.readGroqStatus(error);
+    const message = this.readGroqMessage(error);
+
+    this.logger.error(
+      `Groq request failed (${status}): ${message}`,
+      error instanceof Error ? error.stack : undefined,
+    );
+
+    if (status === 401 || status === 403) {
+      return new ServiceUnavailableException(
+        `Groq authentication failed for model "${this.model}". Check GROQ_API_KEY permissions.`,
+      );
+    }
+
+    if (status === 404) {
+      return new ServiceUnavailableException(
+        `Groq model "${this.model}" is not available for this environment.`,
+      );
+    }
+
+    if (status === 429) {
+      return new ServiceUnavailableException(
+        `Groq rate limit or quota reached for model "${this.model}".`,
+      );
+    }
+
+    if (status >= 500) {
+      return new GatewayTimeoutException(
+        `Groq temporarily failed while generating with model "${this.model}".`,
+      );
+    }
+
+    return new HttpException(message, this.normalizeHttpStatus(status));
+  }
+
+  private readGroqStatus(error: unknown): number {
+    const directStatus = (error as { status?: unknown })?.status;
+    const nestedStatus = (error as { error?: { status?: unknown } })?.error
+      ?.status;
+    const candidate =
+      typeof directStatus === 'number' ? directStatus : nestedStatus;
+
+    return typeof candidate === 'number' && Number.isInteger(candidate)
+      ? candidate
+      : HttpStatus.BAD_GATEWAY;
+  }
+
+  private readGroqMessage(error: unknown): string {
+    const directMessage = (error as { message?: unknown })?.message;
+    const nestedMessage = (error as { error?: { message?: unknown } })?.error
+      ?.message;
+    const message =
+      typeof nestedMessage === 'string'
+        ? nestedMessage
+        : typeof directMessage === 'string'
+          ? directMessage
+          : 'Groq request failed';
+
+    return message.trim() || 'Groq request failed';
+  }
+
+  private normalizeHttpStatus(status: number): number {
+    return status >= 400 && status <= 599 ? status : HttpStatus.BAD_GATEWAY;
+  }
+
+  private delay(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   private parseJson(content: string): any {

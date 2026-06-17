@@ -10,6 +10,7 @@ export class AiController {
     return {
       provider: 'groq',
       configured: this.groqService.isConfigured(),
+      model: this.groqService.getModel(),
     };
   }
 }

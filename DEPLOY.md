@@ -24,7 +24,7 @@ Render's official Blueprint reference documents `render.yaml`, including `buildC
    - Health check path: `/health`
 4. Add environment variables:
    - `GROQ_API_KEY`: your real Groq key
-   - `GROQ_MODEL`: `openai/gpt-oss-20b`
+   - `GROQ_MODEL`: `llama-3.1-8b-instant`
    - `API_ACCESS_TOKEN`: a shared secret that frontend requests must send
    - `CORS_ORIGIN`: comma-separated frontend origins, for example `https://your-frontend.app,http://localhost:5173`
 5. Deploy.
