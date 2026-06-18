@@ -103,15 +103,21 @@ DESIGN RULES:
 - Win cards must have isEnding:true.
 - Double-check your output: count all step cards' choices, then verify every referenced consequenceCardKey exists in the list.
 
+TOKEN BUDGET — keep texts short to fit within the output limit:
+- scenarioText: 1–2 sentences max.
+- choice text: 1 sentence max.
+- consequenceText: 1–2 sentences max.
+- Generate ALL consequence cards before finishing. Do not stop early.
+
 You must respond with valid JSON only. No markdown, no code fences, no explanation — just the raw JSON object matching this exact schema:
 {
   "difficulty": "easy|medium|hard",
   "stepCards": [
     {
       "step": 1,
-      "scenarioText": "Narrative description of the situation at this point (2–4 sentences)",
+      "scenarioText": "Narrative description of the situation at this point (1–2 sentences)",
       "choices": [
-        { "key": "A", "text": "Short description of this intervention choice (1–2 sentences)", "consequenceCardKey": "1A" }
+        { "key": "A", "text": "Short description of this intervention choice (1 sentence)", "consequenceCardKey": "1A" }
       ]
     }
   ],
@@ -119,7 +125,7 @@ You must respond with valid JSON only. No markdown, no code fences, no explanati
     {
       "key": "1A",
       "step": 1,
-      "consequenceText": "What this choice means theoretically and what happens in practice (2–3 sentences)",
+      "consequenceText": "What this choice means theoretically and what happens in practice (1–2 sentences)",
       "interventions": [
         { "aspect": { "kind": "condition", "condition": "Social cohesion", "label": "Social cohesion" }, "scope": "collective", "formality": "informal" },
         { "aspect": { "kind": "value", "condition": "Social cohesion", "label": "Solidarity" }, "scope": "individual", "formality": "formal" },
@@ -212,7 +218,7 @@ export class GroqService {
         },
       ],
       0.4,
-      7000,
+      8192,
     );
 
     const content = response.choices[0]?.message?.content ?? '';
