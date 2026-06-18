@@ -170,6 +170,8 @@ export class GroqService {
         { role: 'user', content: userInput.trim() },
       ],
       0.7,
+      undefined,
+      true,
     );
 
     const content = response.choices[0]?.message?.content ?? '';
@@ -219,6 +221,7 @@ export class GroqService {
       ],
       0.4,
       8192,
+      true,
     );
 
     const content = response.choices[0]?.message?.content ?? '';
@@ -749,6 +752,7 @@ export class GroqService {
     messages: Array<{ role: 'system' | 'user'; content: string }>,
     temperature = 0.35,
     maxTokens?: number,
+    forceJson = false,
   ) {
     try {
       return await this.client!.chat.completions.create({
@@ -756,6 +760,7 @@ export class GroqService {
         messages,
         temperature,
         ...(maxTokens !== undefined && { max_tokens: maxTokens }),
+        ...(forceJson && { response_format: { type: 'json_object' } }),
       });
     } catch (error: unknown) {
       const status = this.readGroqStatus(error);
