@@ -1,6 +1,5 @@
 import {
   BadRequestException,
-  GatewayTimeoutException,
   HttpException,
   HttpStatus,
   Injectable,
@@ -32,8 +31,6 @@ import {
 const MAX_DIRECT_SOURCE_CHARS = 6_000;
 const SUMMARY_CHUNK_CHARS = 4_000;
 const MAX_SUMMARY_PASSES = 3;
-const GROQ_RETRYABLE_STATUSES = new Set([408, 409, 429, 500, 502, 503, 504]);
-const GROQ_MAX_ATTEMPTS = 2;
 
 const CASE_DIFFICULTIES: CaseDifficulty[] = ['easy', 'medium', 'hard'];
 
@@ -144,7 +141,7 @@ export class GroqService {
   constructor(private readonly configService: ConfigService) {
     const apiKey = this.configService.get<string>('GROQ_API_KEY');
     this.model =
-      this.configService.get<string>('GROQ_MODEL') ?? 'llama-3.1-8b-instant';
+      this.configService.get<string>('GROQ_MODEL') ?? 'meta-llama/llama-4-scout-17b-16e-instruct';
     this.client = apiKey ? new Groq({ apiKey }) : null;
   }
 
@@ -215,7 +212,7 @@ export class GroqService {
         },
       ],
       0.4,
-      8000,
+      7000,
     );
 
     const content = response.choices[0]?.message?.content ?? '';
@@ -241,8 +238,9 @@ export class GroqService {
 
     const difficulty = this.readDifficulty(parsed.difficulty);
     const stepCards = this.normalizeStepCards(parsed.stepCards);
-    const consequenceCards = this.normalizeConsequenceCards(
-      parsed.consequenceCards,
+    const consequenceCards = this.healCardLinks(
+      stepCards,
+      this.normalizeConsequenceCards(parsed.consequenceCards),
     );
 
     this.validateCardLinks(stepCards, consequenceCards);
@@ -414,6 +412,47 @@ export class GroqService {
       : 'individual';
   }
 
+  // Fill in any consequence cards that step choices reference but were never generated.
+  private healCardLinks(
+    stepCards: StepCard[],
+    consequenceCards: ConsequenceCard[],
+  ): ConsequenceCard[] {
+    const existing = new Set(consequenceCards.map((c) => c.key));
+    const healed = [...consequenceCards];
+
+    for (const step of stepCards) {
+      for (const choice of step.choices) {
+        const key = choice.consequenceCardKey;
+        if (!existing.has(key)) {
+          this.logger.warn(`Healing missing consequence card "${key}"`);
+          healed.push({
+            key,
+            step: step.step,
+            consequenceText:
+              'This path was not fully elaborated. Reflect on which Social Quality aspects this intervention addresses and how it might play out in practice.',
+            interventions: [
+              {
+                aspect: {
+                  kind: 'condition',
+                  condition: 'Social cohesion',
+                  label: 'Social cohesion',
+                },
+                scope: 'individual',
+                formality: 'informal',
+              },
+            ],
+            nextStep: null,
+            isEnding: true,
+            isWin: false,
+          });
+          existing.add(key);
+        }
+      }
+    }
+
+    return healed;
+  }
+
   private validateCardLinks(
     stepCards: StepCard[],
     consequenceCards: ConsequenceCard[],
@@ -430,14 +469,16 @@ export class GroqService {
       }
     }
 
-    // Non-ending cards must point at a step that exists.
+    // Non-ending cards must point at a step that exists; heal by converting to an ending.
     const stepNumbers = new Set(stepCards.map((s) => s.step));
     for (const card of consequenceCards) {
       if (!card.isEnding) {
         if (card.nextStep === null || !stepNumbers.has(card.nextStep)) {
-          throw new BadRequestException(
-            `Consequence card "${card.key}" is not an ending but has an invalid nextStep`,
+          this.logger.warn(
+            `Healing consequence card "${card.key}": invalid nextStep ${card.nextStep}, converting to ending`,
           );
+          card.isEnding = true;
+          card.nextStep = null;
         }
       }
     }
@@ -703,70 +744,24 @@ export class GroqService {
     temperature = 0.35,
     maxTokens?: number,
   ) {
-    let lastError: unknown;
+    try {
+      return await this.client!.chat.completions.create({
+        model: this.model,
+        messages,
+        temperature,
+        ...(maxTokens !== undefined && { max_tokens: maxTokens }),
+      });
+    } catch (error: unknown) {
+      const status = this.readGroqStatus(error);
+      const message = this.readGroqMessage(error);
 
-    for (let attempt = 1; attempt <= GROQ_MAX_ATTEMPTS; attempt += 1) {
-      try {
-        return await this.client!.chat.completions.create({
-          model: this.model,
-          messages,
-          temperature,
-          ...(maxTokens !== undefined && { max_tokens: maxTokens }),
-        });
-      } catch (error: unknown) {
-        lastError = error;
-        const status = this.readGroqStatus(error);
-
-        if (
-          attempt < GROQ_MAX_ATTEMPTS &&
-          GROQ_RETRYABLE_STATUSES.has(status)
-        ) {
-          this.logger.warn(
-            `Groq request failed on attempt ${attempt}/${GROQ_MAX_ATTEMPTS} with status ${status}. Retrying once.`,
-          );
-          await this.delay(400 * attempt);
-          continue;
-        }
-      }
-    }
-
-    throw this.toGroqHttpException(lastError);
-  }
-
-  private toGroqHttpException(error: unknown): HttpException {
-    const status = this.readGroqStatus(error);
-    const message = this.readGroqMessage(error);
-
-    this.logger.error(
-      `Groq request failed (${status}): ${message}`,
-      error instanceof Error ? error.stack : undefined,
-    );
-
-    if (status === 401 || status === 403) {
-      return new ServiceUnavailableException(
-        `Groq authentication failed for model "${this.model}". Check GROQ_API_KEY permissions.`,
+      this.logger.error(
+        `Groq request failed (${status}): ${message}`,
+        error instanceof Error ? error.stack : undefined,
       );
-    }
 
-    if (status === 404) {
-      return new ServiceUnavailableException(
-        `Groq model "${this.model}" is not available for this environment.`,
-      );
+      throw new HttpException(message, status);
     }
-
-    if (status === 429) {
-      return new ServiceUnavailableException(
-        `Groq rate limit or quota reached for model "${this.model}".`,
-      );
-    }
-
-    if (status >= 500) {
-      return new GatewayTimeoutException(
-        `Groq temporarily failed while generating with model "${this.model}".`,
-      );
-    }
-
-    return new HttpException(message, this.normalizeHttpStatus(status));
   }
 
   private readGroqStatus(error: unknown): number {
@@ -793,14 +788,6 @@ export class GroqService {
           : 'Groq request failed';
 
     return message.trim() || 'Groq request failed';
-  }
-
-  private normalizeHttpStatus(status: number): number {
-    return status >= 400 && status <= 599 ? status : HttpStatus.BAD_GATEWAY;
-  }
-
-  private delay(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   private parseJson(content: string): any {
